@@ -1,0 +1,112 @@
+<div id="app" style="padding: 15px;">
+  <style>
+    /* ... (KEEP YOUR ORIGINAL STYLES HERE) ... */
+    :root {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    label {
+      font-size: 11px;
+      color: #767676;
+      font-weight: 500;
+    }
+
+    input[type="number"] {
+      padding: 8px 10px;
+      border: 1px solid #E6E6E6;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    input[type="number"]:focus {
+      outline: none;
+      border-color: #18A0FB;
+    }
+
+    button {
+      padding: 10px 15px;
+      background-color: #18A0FB;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.1s;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: #0E77D3;
+    }
+
+    button:disabled {
+      background-color: #CCCCCC;
+      cursor: not-allowed;
+    }
+
+    /* Disabled style */
+    .message {
+      font-size: 11px;
+      color: #767676;
+      min-height: 15px;
+    }
+  </style>
+
+  <div class="container">
+    <label for="space-input">Add space on the right (px)</label>
+    <input type="number" id="space-input" value="400" min="1" placeholder="e.g. 400">
+    <div id="message" class="message"></div> <button id="move-button" disabled>Make way!</button>
+  </div>
+</div>
+
+<script>
+  // Get elements
+  const spaceInput = document.getElementById('space-input')
+  const moveButton = document.getElementById('move-button')
+  const messageDiv = document.getElementById('message')
+
+  // Listen for message from code.ts
+  onmessage = (event) => {
+    const msg = event.data.pluginMessage
+
+    if (msg.type === 'selectionState') {
+      messageDiv.textContent = msg.message
+
+      if (msg.state === 'VALID') {
+        moveButton.disabled = false
+        // Only set the default if the user hasn't typed anything yet or if it's the initial load
+        if (document.activeElement !== spaceInput) {
+          spaceInput.value = msg.defaultSpace
+        }
+      } else {
+        moveButton.disabled = true
+      }
+    }
+  }
+
+  // Listen for button click
+  moveButton.onclick = () => {
+    const spaceValue = spaceInput.value
+
+    // Send the value back to code.ts
+    parent.postMessage({
+      pluginMessage: {
+        type: 'move',
+        value: spaceValue
+      }
+    }, '*')
+  };
+</script>
