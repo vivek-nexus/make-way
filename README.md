@@ -16,9 +16,9 @@ The plugin begins by validating the user's input and establishing the absolute r
 
 ---
 
-### 2. Core Traversal and Node Identification (Identify Candidates)
+### 2. Core Traversal and Node Identification (Step 1: Identify Candidates)
 
-The plugin employs a **Depth-First Pre-order Traversal** starting from the page root. For every node ($N$) encountered, the algorithm determines its fate using the following four rules in sequence. The key strategy is **pruning**—stopping the traversal down a branch as soon as we determine that the container or its contents are irrelevant or have already been captured for movement.
+The plugin employs a **Depth-First Pre-order Traversal** starting from the page root. For every node ($N$) encountered, the algorithm determines its fate using the following four rules in sequence. This process captures all vertically overlapping nodes to the right of $S$.
 
 | Rule | Condition Check | Action | Logic |
 | :--- | :--- | :--- | :--- |
@@ -29,14 +29,15 @@ The plugin employs a **Depth-First Pre-order Traversal** starting from the page 
 
 ---
 
-### 3. Proximity Filtering (Filter Distant Nodes)
+### 3. Proximity Filtering (Step 2: Filter Distant Nodes)
 
-The candidate list (`nodesToMove`) is filtered out to remove any nodes that are sufficiently far from the selected node's ($S$'s) structure, using the $\text{MAX\_H\_DISTANCE}$ threshold.
+The candidate list (`nodesToMove`) is filtered to ensure only components that are structurally adjacent or within the $\text{MAX\_H\_DISTANCE}$ threshold are moved.
 
-1.  **Identify Structural Reference ($X$):** For every candidate node $N$, the algorithm finds its **structural sibling ancestor ($X$)**. $X$ is the ancestor of $S$ that shares the same parent as $N$.
-2.  **Calculate Projected Distance ($\Delta x$):** The gap between $N$'s current absolute left edge and the **projected right edge of $X$** (after the resizing operation) is calculated:
+1.  **Immediate Sibling Exemption:** If node $N$ is an **immediate sibling** of $S$ (shares the same parent), $N$ is exempt from the proximity check and is **compulsorily included** in the final movement list.
+2.  **Identify Structural Reference ($X$):** For non-sibling candidates $N$, the algorithm finds its **structural sibling ancestor ($X$)**. $X$ is the ancestor of $S$ that shares the same parent as $N$.
+3.  **Calculate Projected Distance ($\Delta x$):** The gap between $N$'s current absolute left edge and the **projected right edge of $X$** (after the resizing operation) is calculated:
     $$\Delta x = N.\text{absX} - (X.\text{absX} + X.\text{width} + \text{SPACE\_TO\_CREATE})$$
-3.  **Filtering:** If $\Delta x > \text{100px}$, node $N$ is removed from `nodesToMove`. This filters out distant, irrelevant nodes like far-off screens.
+4.  **Filtering:** If $\Delta x > \text{100px}$, node $N$ is removed from `nodesToMove`. If the structural reference $X$ cannot be found, $N$ is also filtered out by default.
 
 ---
 
@@ -49,4 +50,5 @@ The final, filtered list of nodes is sorted and moved, and the ancestor containe
     $$\text{N.x} \leftarrow \text{N.x} + \text{SPACE\_TO\_CREATE}$$
 3.  **Ancestor Resizing:** Starting from $S$'s immediate parent, the plugin traverses up the ancestor chain.
     * For every ancestor that is a **Frame** or **Section** and is not locked, its width is increased by $\text{SPACE\_TO\_CREATE}$.
-    * The plugin uses the robust method: `Ancestor.resizeWithoutConstraints(newWidth, currentHeight)`
+    * The plugin uses the robust method:
+        $$\text{Ancestor.resizeWithoutConstraints}(\text{newWidth}, \text{currentHeight})$$
