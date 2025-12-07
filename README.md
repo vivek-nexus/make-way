@@ -10,7 +10,7 @@ The plugin begins by validating the user's input and establishing the absolute r
 
 * **Validation:** The plugin requires exactly **one node ($S$)** to be selected. This node must be a direct child of the **Page** or a **Section** (i.e., a "top-level" screen/element).
 * **Target Space:** A dynamic value of `selectedNodeWidth` + 80px (`SPACE_TO_CREATE`) is defined for the horizontal shift. This value is used for both the movement and the projected width calculation in the filter.
-* **Proximity Threshold:** A fixed value, $\text{MAX\_H\_DISTANCE} = 100\text{px}$, is set for the horizontal filtering step.
+* **Proximity Threshold:** A fixed value, $\text{MAXHDISTANCE} = 100\text{px}$, is set for the horizontal filtering step.
 * **Boundary Calculation:** The **absolute bounding box** of the selected node ($S_{Bounds}$) is calculated. All subsequent vertical checks are performed against these absolute coordinates.
 * **Movement List:** An empty list, `nodesToMove`, is initialized to store the SceneNodes that are **candidates** for movement.
 
@@ -31,12 +31,12 @@ The plugin employs a **Depth-First Pre-order Traversal** starting from the page 
 
 ### 3. Proximity Filtering (Step 2: Filter Distant Nodes)
 
-The candidate list (`nodesToMove`) is filtered to ensure only components that are structurally adjacent or within the $\text{MAX\_H\_DISTANCE}$ threshold are moved.
+The candidate list (`nodesToMove`) is filtered to ensure only components that are structurally adjacent or within the $\text{MAXHDISTANCE}$ threshold are moved.
 
 1.  **Immediate Sibling Exemption:** If node $N$ is an **immediate sibling** of $S$ (shares the same parent), $N$ is exempt from the proximity check and is **compulsorily included** in the final movement list.
 2.  **Identify Structural Reference ($X$):** For non-sibling candidates $N$, the algorithm finds its **structural sibling ancestor ($X$)**. $X$ is the ancestor of $S$ that shares the same parent as $N$.
 3.  **Calculate Projected Distance ($\Delta x$):** The gap between $N$'s current absolute left edge and the **projected right edge of $X$** (after the resizing operation) is calculated:
-    $$\Delta x = N.\text{absX} - (X.\text{absX} + X.\text{width} + \text{SPACE\_TO\_CREATE})$$
+    $$\Delta x = N.\text{absX} - (X.\text{absX} + X.\text{width} + \text{SPACETOCREATE})$$
 4.  **Filtering:** If $\Delta x > \text{100px}$, node $N$ is removed from `nodesToMove`. If the structural reference $X$ cannot be found, $N$ is also filtered out by default.
 
 ---
@@ -47,8 +47,8 @@ The final, filtered list of nodes is sorted and moved, and the ancestor containe
 
 1.  **Sorting:** Nodes in the final `nodesToMove` list are sorted by their absolute $x$ coordinate in **descending order (farthest right first)**. This ensures stability and prevents any potential cascading issues during movement.
 2.  **Movement:** Each node $N$ in the sorted list is moved by modifying its relative $x$ coordinate:
-    $$\text{N.x} \leftarrow \text{N.x} + \text{SPACE\_TO\_CREATE}$$
+    $$\text{N.x} \leftarrow \text{N.x} + \text{SPACETOCREATE}$$
 3.  **Ancestor Resizing:** Starting from $S$'s immediate parent, the plugin traverses up the ancestor chain.
-    * For every ancestor that is a **Frame** or **Section** and is not locked, its width is increased by $\text{SPACE\_TO\_CREATE}$.
+    * For every ancestor that is a **Frame** or **Section** and is not locked, its width is increased by $\text{SPACETOCREATE}$.
     * The plugin uses the robust method:
         $$\text{Ancestor.resizeWithoutConstraints}(\text{newWidth}, \text{currentHeight})$$
