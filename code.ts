@@ -53,7 +53,6 @@ figma.on('run', ({ command, parameters }: RunEvent) => {
         figma.notify("Please enter a valid positive number for the space.", { error: true })
         // Do not close the plugin if the input is bad
       } else {
-        figma.notify(`Moving all items on the right by ${msg.value}px...`)
         executeMovement(space)
       }
     }
@@ -114,6 +113,7 @@ function validateAndSendState(headless: boolean): boolean {
  * @param SPACE_TO_CREATE The amount of space to create (in pixels).
  */
 function executeMovement(SPACE_TO_CREATE: number) {
+  figma.notify(`Moving all items on the right by ${SPACE_TO_CREATE}px...`)
   const selection = figma.currentPage.selection
   const S = selection[0]
   const SBounds = getAbsoluteBounds(S)
