@@ -14,5 +14,26 @@
     "allowedDomains": [
       "none"
     ]
-  }
+  },
+  "menu": [
+    {
+      "name": "Make space to duplicate selected node",
+      "command": "makeSpaceDuplicateNode"
+    },
+    {
+      "name": "Specify space required next to the selected node",
+      "command": "makeSpacePixels",
+      "parameters": [
+        {
+          "key": "pixels",
+          "name": "Space required in pixels",
+          "allowFreeform": true
+        }
+      ]
+    },
+    {
+      "name": "Launch plugin UI",
+      "command": "launchPluginUI"
+    }
+  ]
 }

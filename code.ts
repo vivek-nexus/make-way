@@ -8,23 +8,42 @@
 
 // --- Plugin Entry Point ---
 
-figma.on('run', () => {
+figma.on('run', ({ command, parameters }: RunEvent) => {
+  if (command) {
+    switch (command) {
+      case "makeSpaceDuplicateNode":
+        if (validateAndSendState(true)) {
+          const selection = figma.currentPage.selection
+          executeMovement(selection[0].width + 80)
+        }
+        return
+      case "makeSpacePixels":
+        if (parameters && !isNaN(parameters["pixels"]) && parameters["pixels"] > 0) {
+          if (validateAndSendState(true)) {
+            executeMovement(Number(parameters["pixels"]))
+          }
+        }
+        figma.notify("Please enter a valid number in pixels and rerun", { error: true })
+        return
+    }
+  }
+
   // 1. Show UI immediately
-  figma.showUI(__html__, { width: 300, height: 165, title: "Make way!" })
+  figma.showUI(__html__, { width: 400, height: 360, title: "Make way!" })
 
   // 2. Initial validation and state update
-  validateAndSendState()
+  validateAndSendState(false)
 
   // 3. Listen for selection changes and re-validate
   figma.on('selectionchange', () => {
-    validateAndSendState()
+    validateAndSendState(false)
   })
 
   // 4. Listen for the user's action from the UI
   figma.ui.on('message', (msg) => {
     if (msg.type === 'move') {
       // Re-validate just before running the movement
-      if (!validateAndSendState()) {
+      if (!validateAndSendState(false)) {
         figma.notify("Please select a top level node.", { error: true })
         return
       }
@@ -34,6 +53,7 @@ figma.on('run', () => {
         figma.notify("Please enter a valid positive number for the space.", { error: true })
         // Do not close the plugin if the input is bad
       } else {
+        figma.notify(`Moving all items on the right by ${msg.value}px...`)
         executeMovement(space)
       }
     }
@@ -47,14 +67,16 @@ figma.on('run', () => {
 // --- Validation and UI Update Logic ---
 
 /**
- * Checks selection validity and sends the appropriate state message to the UI.
+ * Checks selection validity and sends the appropriate state message to the UI or returns values in headless mode
  * @returns true if the selection is valid, false otherwise.
  */
-function validateAndSendState(): boolean {
+function validateAndSendState(headless: boolean): boolean {
   const selection = figma.currentPage.selection
 
   if (selection.length !== 1) {
-    figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" })
+    headless
+      ? figma.notify("Please select a top level node and rerun", { error: true })
+      : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" })
     return false
   }
 
@@ -68,16 +90,18 @@ function validateAndSendState(): boolean {
     // Calculate Default Space: Selected node width + 80px.
     const DEFAULT_SPACE = Math.round(S.width + 80)
 
-    figma.ui.postMessage({
+    !headless && figma.ui.postMessage({
       type: 'selectionState',
       state: 'VALID',
-      message: `${S.width}px (node width) + 80px`,
+      message: `${S.width}px (selected node width) + 80px buffer`,
       defaultSpace: DEFAULT_SPACE
     })
     return true
   } else {
     // Invalid parent
-    figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" })
+    headless
+      ? figma.notify("Please select a top level node and rerun", { error: true })
+      : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" })
     return false
   }
 }

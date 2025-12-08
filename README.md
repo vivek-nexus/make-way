@@ -1,3 +1,6 @@
+![image](thumbnail.png)
+
+---
 ## Algorithm: How "Make way" Works
 
 The "Make way" plugin automates the complex task of shifting adjacent content and resizing containers when a new screen or note needs to be inserted. The core logic involves a recursive tree traversal and a **multi-step conditional process** that ensures only relevant and nearby nodes are moved.
