@@ -1,42 +1,267 @@
 "use strict";
-// code.ts
+// --- Helper to get absolute position ---
+function getAbsoluteBoundingBox(node) {
+    if (!('absoluteTransform' in node) || !('width' in node) || !('height' in node)) {
+        return null;
+    }
+    // absoluteTransform is a 2x3 matrix: [[m00, m01, m02], [m10, m11, m12]]
+    const transform = node.absoluteTransform;
+    return {
+        x: transform[0][2],
+        y: transform[1][2],
+        width: node.width,
+        height: node.height,
+    };
+}
+// --------------------------------------------------------------------------------------------------
+// --- CORE COLLISION RESOLUTION LOGIC ---
+// --------------------------------------------------------------------------------------------------
 /**
- * Figma Plugin: Make way!
- * Automatically shifts elements to the right of the selection (S)
- * that vertically overlap with S, creating empty space.
+ * Propagates a fixed shift amount among siblings to the right of a starting node
+ * in a single, controlled, iterative pass.
+ * * This function is non-recursive, eliminating RangeError exceptions.
+ * * @param StartNode The node whose final position defines the initial ripple frontier.
+ * @param Parent The common parent container.
+ * @param ShiftAmount The fixed amount (in pixels) all affected nodes will be moved.
  */
-// --- Plugin Entry Point ---
+function PropagateShift(StartNode, Parent, ShiftAmount) {
+    if (!('children' in Parent))
+        return;
+    const startAbsBox = getAbsoluteBoundingBox(StartNode);
+    if (!startAbsBox)
+        return;
+    // 1. Establish the initial ripple frontier (the right edge of the node causing the push)
+    let rippleFrontierX = startAbsBox.x + startAbsBox.width;
+    // 2. Identify all relevant siblings: vertically overlapping AND physically to the right.
+    const relevantSiblings = Parent.children
+        .filter(N => {
+        // Exclude self, non-SceneNode, and locked nodes.
+        if (!('x' in N) || N === StartNode || N.locked) {
+            return false;
+        }
+        const siblingAbsBox = getAbsoluteBoundingBox(N);
+        if (!siblingAbsBox) {
+            return false;
+        }
+        // Vertical Overlap Check
+        const verticalOverlap = (siblingAbsBox.y < startAbsBox.y + startAbsBox.height) &&
+            (siblingAbsBox.y + siblingAbsBox.height > startAbsBox.y);
+        // Horizontal Filter: Sibling must be positioned to the right of the StartNode's left edge.
+        // This includes the target nodes for movement.
+        const startsToTheRight = siblingAbsBox.x >= startAbsBox.x;
+        // We only include nodes that are vertically aligned and are candidates for being pushed.
+        return verticalOverlap && startsToTheRight;
+    });
+    // 3. Sort the siblings strictly from left to right. This is CRITICAL for the iterative sweep.
+    relevantSiblings.sort((a, b) => {
+        const absA = getAbsoluteBoundingBox(a);
+        const absB = getAbsoluteBoundingBox(b);
+        return (absA ? absA.x : 0) - (absB ? absB.x : 0);
+    });
+    // 4. Perform the single, iterative sweep.
+    relevantSiblings.forEach(N => {
+        const siblingAbsBox = getAbsoluteBoundingBox(N);
+        if (!siblingAbsBox)
+            return;
+        // COLLISION CHECK: Does this sibling's left edge overlap the current ripple frontier?
+        if (siblingAbsBox.x < rippleFrontierX) {
+            // A. Move the node by the fixed amount.
+            const oldX = N.x;
+            N.x += ShiftAmount;
+            console.log(`[Sweep] Moved '${N.name}' from x: ${oldX} to x: ${N.x} (Shift: ${ShiftAmount}px)`);
+            figma.notify(`Moving ${N.name}...`, { timeout: 50 });
+            // B. ⚠️ Propagate the movement: The new ripple frontier is set by this node's new right edge.
+            // We must recalculate the absolute box for the next check.
+            const newSiblingAbsBox = getAbsoluteBoundingBox(N);
+            if (newSiblingAbsBox) {
+                // The new frontier is the NEW position of the moved node.
+                rippleFrontierX = newSiblingAbsBox.x + newSiblingAbsBox.width;
+            }
+        }
+        else {
+            // If the node is not overlapping the current frontier, the ripple stops.
+            // Because the list is sorted, we can safely break the loop for further efficiency.
+            return; // Equivalent to break in a typical for-loop
+        }
+    });
+}
+// --------------------------------------------------------------------------------------------------
+// --- UPWARD PROPAGATION LOGIC ---
+// --------------------------------------------------------------------------------------------------
+/**
+ * ⬆️ Upward Propagation and Parent Collision Check (Helper Function)
+ */
+// ...
+function PropagateResize(ResizedNode, SpaceCreatedInResize, level) {
+    const X = ResizedNode;
+    // P is the parent of X (ResizedNode). We explicitly allow it to be DocumentNode now.
+    const P = X.parent;
+    const logPrefix = `[Resize Propagate L${level}]`;
+    // 1. BASE CASE CHECK: If P is the Page, Document, or null.
+    if (!P || P.type === 'DOCUMENT' || P.type === 'PAGE') {
+        console.log(`${logPrefix} Reached Page/Document. Running final sibling shift check.`);
+        // CRITICAL FIX: Run the shift on the Page's children (where Section 6 is).
+        // We must ensure P is a valid parent type (SectionNode, PageNode, or DocumentNode) 
+        // before passing it to PropagateShift.
+        if (P && (P.type === 'PAGE' || P.type === 'DOCUMENT') && 'children' in P) {
+            figma.notify(`Running final shift against elements on the Page...`, { timeout: 1000 });
+            // 🚨 FIX: Type assertion to tell TypeScript that P conforms to ValidParentNode
+            PropagateShift(X, P, SpaceCreatedInResize);
+        }
+        console.log(`${logPrefix} Stopping upward propagation.`);
+        return;
+    }
+    // 2. RECURSIVE STEP: Parent is another Section (P_SECTION)
+    const P_SECTION = P;
+    console.log(`${logPrefix} Processing parent Section: '${P_SECTION.name}'.`);
+    // 2A. Parent Collision Check
+    figma.notify(`Propagating collision to siblings of ${X.name} in ${P_SECTION.name}...`, { timeout: 1000 });
+    PropagateShift(X, P_SECTION, SpaceCreatedInResize);
+    // 2B. Resize P
+    const oldWidth = P_SECTION.width;
+    P_SECTION.resizeWithoutConstraints(P_SECTION.width + SpaceCreatedInResize, P_SECTION.height);
+    console.log(`${logPrefix} Resized parent '${P_SECTION.name}' from ${oldWidth}px to ${P_SECTION.width}px (using resizeWithoutConstraints).`);
+    figma.notify(`Resizing parent Section ${P_SECTION.name}...`, { timeout: 500 });
+    // 2C. Recursive Call
+    PropagateResize(P_SECTION, SpaceCreatedInResize, level + 1);
+}
+// --------------------------------------------------------------------------------------------------
+// --- UTILITY AND CORE FUNCTIONS ---
+// --------------------------------------------------------------------------------------------------
+function validateAndSendState(headless) {
+    // ... (unchanged validation logic)
+    const selection = figma.currentPage.selection;
+    if (selection.length !== 1) {
+        !headless && figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select exactly one node" });
+        return false;
+    }
+    const S = selection[0];
+    const SParent = S.parent;
+    if (SParent === figma.currentPage || (SParent === null || SParent === void 0 ? void 0 : SParent.type) === 'SECTION') {
+        // Ensure the selected node has a width for default calculation
+        const S_WIDTH = 'width' in S ? S.width : 0;
+        const DEFAULT_SPACE = Math.round(S_WIDTH + 80);
+        !headless && figma.ui.postMessage({
+            type: 'selectionState',
+            state: 'VALID',
+            message: `${S_WIDTH}px (selected node width) + 80px buffer`,
+            defaultSpace: DEFAULT_SPACE
+        });
+        return true;
+    }
+    else {
+        const message = "Please select a node whose parent is the Page or a Section.";
+        headless
+            ? figma.notify(message, { error: true })
+            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: message });
+        return false;
+    }
+}
+/**
+ * Executes the Collision-Based Path Mimicry ("Make Way") algorithm.
+ * @param SPACE_TO_CREATE The distance in pixels to shift elements to the right.
+ */
+function executeMovement(SPACE_TO_CREATE) {
+    const selection = figma.currentPage.selection;
+    if (selection.length !== 1)
+        return;
+    const S = selection[0];
+    const SParent = S.parent;
+    if (!SParent || (SParent.type !== 'SECTION' && SParent.type !== 'PAGE')) {
+        figma.notify("Error: Selected node must be a top-level child of a Section or the Page.", { error: true });
+        return;
+    }
+    // Type guard for the selected node to ensure it has position/dimensions
+    if (!('x' in S) || !('width' in S) || !('height' in S)) {
+        figma.notify("Error: Selected node type is not supported for movement.", { error: true });
+        return;
+    }
+    console.log(`--- STARTING MOVEMENT: ${S.name} ---`);
+    console.log(`SPACE_TO_CREATE: ${SPACE_TO_CREATE}px`);
+    const S_FRAME = S;
+    const SParent_CONTAINER = SParent;
+    /**
+     * 1. 🎯 Initial Node Creation (The Push)
+     */
+    const Z = figma.createFrame();
+    Z.name = "MAKE_WAY_TEMP_Z";
+    Z.fills = [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 }, opacity: 0.1 }];
+    Z.strokes = [];
+    Z.opacity = 0.001; // Make it practically invisible
+    // Position Z immediately to the right of the selected node S
+    Z.x = S_FRAME.x + S_FRAME.width;
+    Z.y = S_FRAME.y;
+    Z.resize(SPACE_TO_CREATE, S_FRAME.height);
+    SParent_CONTAINER.appendChild(Z);
+    console.log(`1. Created temp node Z at x: ${Z.x}, width: ${Z.width}`);
+    // Create the set of nodes that must remain stationary
+    const nodesToBlock = new Set([S, Z]);
+    try {
+        /**
+         * 2. 💥 Collision and Response Propagation (The Initial Ripple)
+         */
+        figma.notify(`Starting initial collision ripple...`, { timeout: 1000 });
+        // The initial call starts the chain from Z and blocks S and Z from moving.
+        PropagateShift(Z, SParent_CONTAINER, SPACE_TO_CREATE);
+        /**
+         * 3. 🖼️ Container Resizing (Local Parent)
+         */
+        if (SParent_CONTAINER.type === 'SECTION') {
+            const parentSection = SParent_CONTAINER;
+            const oldWidth = parentSection.width;
+            parentSection.resizeWithoutConstraints(parentSection.width + SPACE_TO_CREATE, parentSection.height);
+            console.log(`3. Resized local parent '${parentSection.name}' from ${oldWidth}px to ${parentSection.width}px (using resizeWithoutConstraints)`);
+            figma.notify(`Resized local parent ${parentSection.name}...`, { timeout: 1000 });
+            // Trigger Upward Propagation
+            PropagateResize(parentSection, SPACE_TO_CREATE, 1);
+        }
+    }
+    catch (error) {
+        console.error("Make Way algorithm error:", error);
+        figma.notify("An error occurred during movement propagation. Check console for details.", { error: true });
+    }
+    finally {
+        // 4. CLEANUP
+        Z.remove();
+        console.log("5. Removed temp node Z.");
+        figma.notify(`Movement Complete! Created ${SPACE_TO_CREATE}px space next to '${S.name}'!`, { timeout: 2000 });
+        console.log(`--- FINISHED MOVEMENT ---`);
+        figma.closePlugin();
+    }
+}
+// --------------------------------------------------------------------------------------------------
+// --- PLUGIN ENTRY POINT ---
+// --------------------------------------------------------------------------------------------------
 figma.on('run', ({ command, parameters }) => {
     if (command) {
         switch (command) {
             case "makeSpaceDuplicateNode":
                 if (validateAndSendState(true)) {
                     const selection = figma.currentPage.selection;
-                    executeMovement(selection[0].width + 80);
+                    const selectedNode = selection[0];
+                    if (selectedNode && 'width' in selectedNode) {
+                        executeMovement(selectedNode.width + 80);
+                    }
                 }
                 return;
             case "makeSpacePixels":
                 if (parameters && !isNaN(parameters["pixels"]) && parameters["pixels"] > 0) {
                     if (validateAndSendState(true)) {
                         executeMovement(Number(parameters["pixels"]));
+                        return;
                     }
                 }
-                figma.notify("Please enter a valid number in pixels and rerun", { error: true });
+                figma.notify("Please select a top-level node and enter a valid positive number for the space.", { error: true });
                 return;
         }
     }
-    // 1. Show UI immediately
     figma.showUI(__html__, { width: 400, height: 360, title: "Make way!" });
-    // 2. Initial validation and state update
     validateAndSendState(false);
-    // 3. Listen for selection changes and re-validate
     figma.on('selectionchange', () => {
         validateAndSendState(false);
     });
-    // 4. Listen for the user's action from the UI
     figma.ui.on('message', (msg) => {
         if (msg.type === 'move') {
-            // Re-validate just before running the movement
             if (!validateAndSendState(false)) {
                 figma.notify("Please select a top level node.", { error: true });
                 return;
@@ -44,236 +269,13 @@ figma.on('run', ({ command, parameters }) => {
             const space = parseInt(msg.value, 10);
             if (isNaN(space) || space <= 0) {
                 figma.notify("Please enter a valid positive number for the space.", { error: true });
-                // Do not close the plugin if the input is bad
             }
             else {
                 executeMovement(space);
             }
         }
-        // Handle UI close event (optional, but good practice)
         if (msg.type === 'close') {
             figma.closePlugin();
         }
     });
 });
-// --- Validation and UI Update Logic ---
-/**
- * Checks selection validity and sends the appropriate state message to the UI or returns values in headless mode
- * @returns true if the selection is valid, false otherwise.
- */
-function validateAndSendState(headless) {
-    const selection = figma.currentPage.selection;
-    if (selection.length !== 1) {
-        headless
-            ? figma.notify("Please select a top level node and rerun", { error: true })
-            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" });
-        return false;
-    }
-    const S = selection[0]; // The selected node
-    const SParent = S.parent;
-    // Check if parent is a Page or a Section
-    if (SParent === figma.currentPage || (SParent === null || SParent === void 0 ? void 0 : SParent.type) === 'SECTION') {
-        // Valid selection
-        // Calculate Default Space: Selected node width + 80px.
-        const DEFAULT_SPACE = Math.round(S.width + 80);
-        !headless && figma.ui.postMessage({
-            type: 'selectionState',
-            state: 'VALID',
-            message: `${S.width}px (selected node width) + 80px buffer`,
-            defaultSpace: DEFAULT_SPACE
-        });
-        return true;
-    }
-    else {
-        // Invalid parent
-        headless
-            ? figma.notify("Please select a top level node and rerun", { error: true })
-            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" });
-        return false;
-    }
-}
-// --- Core Movement Logic ---
-/**
- * Contains the main logic to find, move, and resize elements.
- * @param SPACE_TO_CREATE The amount of space to create (in pixels).
- */
-function executeMovement(SPACE_TO_CREATE) {
-    figma.notify(`Moving all items on the right by ${SPACE_TO_CREATE}px...`);
-    const selection = figma.currentPage.selection;
-    const S = selection[0];
-    const SBounds = getAbsoluteBounds(S);
-    let nodesToMove = [];
-    // 1. Traversal (Identification)
-    figma.currentPage.children.forEach(node => {
-        findNodesToMove(node, S, SBounds, nodesToMove);
-    });
-    // 2. Post-Processing Filter
-    const candidateCount = nodesToMove.length;
-    nodesToMove = filterNodesByProximity(nodesToMove, S, SPACE_TO_CREATE);
-    const filteredCount = candidateCount - nodesToMove.length;
-    // 3. Sorting and Movement
-    if (nodesToMove.length === 0) {
-        figma.notify("No elements to move in the affected zone.", { error: false });
-    }
-    else {
-        // Sort nodes by absX in descending order (farthest right first)
-        nodesToMove.sort((a, b) => getAbsoluteBounds(b).absX - getAbsoluteBounds(a).absX);
-        figma.currentPage.setRelaunchData({ makeSpace: `Creates ${SPACE_TO_CREATE}px space to the right of this node` });
-        let nodesMovedCount = 0;
-        for (const N of nodesToMove) {
-            if ('x' in N) {
-                N.x += SPACE_TO_CREATE;
-                nodesMovedCount++;
-            }
-        }
-        // 4. Resize Ancestors
-        resizeAncestors(S, SPACE_TO_CREATE);
-        let message = `${nodesMovedCount} nodes moved by ${SPACE_TO_CREATE}px`;
-        if (filteredCount > 0) {
-            message += `. ${filteredCount} distant nodes not touched.`;
-        }
-        figma.notify(message);
-    }
-    figma.closePlugin();
-}
-// --- Helper Functions ---
-function getAbsoluteBounds(node) {
-    const transform = node.absoluteTransform;
-    const absX = transform[0][2];
-    const absY = transform[1][2];
-    const absXend = absX + node.width;
-    const absYend = absY + node.height;
-    return { absX, absY, absXend, absYend };
-}
-function checkVerticalOverlap(NBounds, SBounds) {
-    const notFullyAbove = NBounds.absYend > SBounds.absY;
-    const notFullyBelow = NBounds.absY < SBounds.absYend;
-    return notFullyAbove && notFullyBelow;
-}
-function resizeAncestors(S, resizeAmount) {
-    let parent = S.parent;
-    while (parent && parent.type !== 'PAGE') {
-        if ((parent.type === 'FRAME' || parent.type === 'SECTION') &&
-            !parent.locked) {
-            try {
-                const resizableParent = parent;
-                const newWidth = resizableParent.width + resizeAmount;
-                resizableParent.resizeWithoutConstraints(newWidth, resizableParent.height);
-                console.log(`Resized ancestor '${resizableParent.name}' (${resizableParent.type}) by ${resizeAmount}px using resizeWithoutConstraints.`);
-            }
-            catch (e) {
-                console.warn(`CRITICAL ERROR: resizeWithoutConstraints failed on ancestor node ${parent.name} (${parent.type}):`, e);
-            }
-        }
-        else {
-            console.log(`Skipping ancestor '${parent.name}' (${parent.type}) - not Frame/Section or is locked.`);
-        }
-        parent = parent.parent;
-    }
-}
-function findNodesToMove(node, S, SBounds, nodesToMove) {
-    if (!('visible' in node) || !node.visible || node.locked) {
-        return;
-    }
-    const NBounds = getAbsoluteBounds(node);
-    // Rule 1: Ancestor Check
-    let isAncestor = false;
-    let tempParent = S.parent;
-    while (tempParent) {
-        if (tempParent.id === node.id) {
-            isAncestor = true;
-            break;
-        }
-        tempParent = tempParent.parent;
-    }
-    if (isAncestor) {
-        if ('children' in node) {
-            node.children.forEach(child => findNodesToMove(child, S, SBounds, nodesToMove));
-        }
-        return;
-    }
-    // Rule 2: Vertical Pruning
-    if (!checkVerticalOverlap(NBounds, SBounds)) {
-        return;
-    }
-    const isToTheRight = NBounds.absX >= SBounds.absXend;
-    // Rule 3: Affected Zone (without proximity check yet)
-    if (isToTheRight) {
-        nodesToMove.push(node);
-        return; // Prune the branch
-    }
-    // Rule 4: Horizontal Pass
-    if ('children' in node) {
-        node.children.forEach(child => findNodesToMove(child, S, SBounds, nodesToMove));
-    }
-}
-/**
- * Checks if N is an immediate sibling of S (i.e., they share the same parent).
- */
-function isImmediateSibling(S, N) {
-    var _a;
-    // Ensure both nodes have a parent and their parents are the same, 
-    // and N is not S itself (though Rule 1 handles the latter).
-    return S.parent !== null && S.parent.id === ((_a = N.parent) === null || _a === void 0 ? void 0 : _a.id);
-}
-/**
- * Finds the sibling ancestor (X) of S relative to N.
- * X is the ancestor of S that shares N's immediate parent (the Nearest Common Ancestor, C).
- */
-function findAncestorX(S, N) {
-    const NParent = N.parent;
-    if (!NParent)
-        return null; // N has no parent (e.g., it's the root itself)
-    // Find the ancestor of S that is a direct child of N's parent (NParent)
-    let ancestor = S;
-    while (ancestor && ancestor.parent && ancestor.parent.id !== NParent.id) {
-        ancestor = ancestor.parent;
-    }
-    // 'ancestor' is now the node X, the direct child of NParent that contains S.
-    // Check if we reached the root of the search without finding X (shouldn't happen 
-    // if N was found via the traversal, but necessary for safety).
-    if (ancestor && ancestor.parent && ancestor.parent.id === NParent.id) {
-        return ancestor;
-    }
-    return null;
-}
-/**
- * Applies the post-processing filter to remove nodes that are too far horizontally
- * from the *projected* new edge of S's ancestor (X).
- * @param nodesToMove The array of candidate nodes.
- * @param S The selected node.
- * @param SPACE_TO_CREATE The amount of space being created.
- */
-function filterNodesByProximity(nodesToMove, S, SPACE_TO_CREATE) {
-    const MAX_H_DISTANCE = 100; // The maximum allowed horizontal gap
-    const filteredList = [];
-    for (const N of nodesToMove) {
-        // Compulsory Movement for Immediate Siblings
-        if (isImmediateSibling(S, N)) {
-            console.log(`[FILTER] Compulsory move: Node '${N.name}' is an immediate sibling of S.`);
-            filteredList.push(N);
-            continue; // Skip the proximity check
-        }
-        const X = findAncestorX(S, N);
-        if (X) {
-            const XBounds = getAbsoluteBounds(X);
-            const NBounds = getAbsoluteBounds(N);
-            const projectedXRightEdge = XBounds.absX + X.width + SPACE_TO_CREATE;
-            const projectedDeltaX = NBounds.absX - projectedXRightEdge;
-            // Add detailed logging here:
-            console.log(`[FILTER] Checking N: ${N.name} (absX: ${NBounds.absX.toFixed(0)}) against X: ${X.name} (Projected R-Edge: ${projectedXRightEdge.toFixed(0)}). Delta: ${projectedDeltaX.toFixed(0)}`);
-            // Proximity Check
-            if (projectedDeltaX <= MAX_H_DISTANCE) {
-                filteredList.push(N);
-            }
-            else {
-                console.log(`[FILTER] Removed N: ${N.name}. Delta > 100px.`);
-            }
-        }
-        else {
-            // If X cannot be found, the node is considered too structurally remote for proximity check.
-            console.warn(`[FILTER] Could not find structural reference X for node '${N.name}'. Filtering it out by default.`);
-        }
-    }
-    return filteredList;
-}
