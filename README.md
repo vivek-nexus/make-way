@@ -2,7 +2,8 @@
 ![image](thumbnail.png)
 
 ## Algorithm visualisation
-<video src="demo.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/24341dc1-d8e5-48cb-861b-b96eb70bab06
+
 
 ## ⚙️ The "Make Way" Algorithm: Conditional Space Creation
 
