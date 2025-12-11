@@ -17,11 +17,11 @@
   },
   "menu": [
     {
-      "name": "Make space to duplicate selected node",
+      "name": "⚡ Space to duplicate selected node",
       "command": "makeSpaceDuplicateNode"
     },
     {
-      "name": "Specify space required next to the selected node",
+      "name": "⚡ Custom space next to selected node",
       "command": "makeSpacePixels",
       "parameters": [
         {
@@ -32,7 +32,7 @@
       ]
     },
     {
-      "name": "Launch plugin UI",
+      "name": "👋 Launch plugin UI",
       "command": "launchPluginUI"
     }
   ]

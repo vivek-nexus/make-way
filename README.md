@@ -1,66 +1,80 @@
+# Make way! Figma plugin
 ![image](thumbnail.png)
 
-## ⚙️ Algorithm: Collision-Based Path Mimicry ("Make Way") - Iterative Sweep Version
+## Algorithm visualisation
+<video src="demo.mp4" controls width="100%"></video>
 
-This algorithm creates space next to a selected node **S** by simulating a **single-pass, left-to-right iterative movement ripple** among its siblings, followed by a **recursive upward resizing** of parent containers. The entire process is strictly limited to nodes that **vertically overlap** with **S** (or the temporary push-node **Z**).
+## ⚙️ The "Make Way" Algorithm: Conditional Space Creation
 
-* **S:** The original selected node.
-* **SPACE_TO_CREATE:** The distance to create, typically $\text{width}(S) + 80$ pixels. (Note: $\text{width}(S)$ is the width of **S**.)
-
----
-
-### 1. 🎯 Initial Node Creation (The Push)
-
-1.  **Create Z:** Next to **S**, create a temporary, transparent **FrameNode** **Z** with $\text{width} = \text{SPACE\_TO\_CREATE}$ and $\text{height} = \text{height}(S)$.
-2.  **Placement:** **Z** is positioned at $Z.x = S.x + S.width$.
-3.  **Trigger Sweep:** Call the movement handler **PropagateShift** using **Z** as the catalyst.
+This process creates space next to a selected item (**S**) by simulating a horizontal "ripple" effect that pushes adjacent items, and then **conditionally** grows the parent containers up the hierarchy. A parent container only grows if the ripple reaches its absolute boundary.
 
 ---
 
-### 2. 💥 Iterative Movement Sweep (The Lateral Ripple)
+### 1. Kick-Off: The Push Catalyst
 
-The **PropagateShift** function executes the movement in a single, non-recursive, left-to-right pass. 
+The goal is to define the space that needs to be created and initiate the movement.
 
-#### Function: **PropagateShift**(**StartNode**, **Parent**, **ShiftAmount**)
+1.  **Define Space:** Determine the total **SPACE\_TO\_CREATE**.
+2.  **Create Catalyst Z:** A temporary, invisible placeholder item (**Z**) is created immediately to the right of **S** with the width of **SPACE\_TO\_CREATE**.
+3.  **Start Ripple:** The initial movement is triggered using **Z** as the starting point.
 
-1.  **Identify Frontier:** Set the initial **rippleFrontierX** to the **right edge** of the **StartNode** ($\text{StartNode.x} + \text{StartNode.width}$).
-2.  **Filter and Sort Siblings:**
-    * Filter **Parent.children** for movable nodes [**N**] that **vertically overlap** with **StartNode** AND are positioned **to the right** ($\text{N.x} \ge \text{StartNode.x}$).
-    * **Sort:** The filtered list is **strictly sorted** by their absolute X-position (left-to-right).
-3.  **Iterate and Move:** Iterate through the sorted siblings:
-    * **IF N's left edge** ($\text{N.x}$) **< the current $\text{rippleFrontierX}$** (i.e., **N** is overlapping or touching the space/shifted node):
-        * **Move N:** Shift **N** horizontally by the fixed **ShiftAmount**.
-        * **Update Frontier:** Update **rippleFrontierX** to **N's new right edge** ($\text{N}_{\text{new}}.\text{x} + \text{N}.\text{width}$) to propagate the push to the next node in the sorted list.
+---
+
+### 2. Horizontal Ripple Sweep (PropagateShift)
+
+This non-recursive sweep calculates item movement and returns the reach of the ripple.
+
+#### Function: **PropagateShift**(**StartNode**, **Parent**, **ShiftAmount**): **number** (Absolute X)
+
+1.  **Identify Ripple Front:** The initial **Ripple Front** is the absolute right edge of the **StartNode** (e.g., the catalyst **Z**).
+2.  **Find & Sort Targets:** Find all movable siblings that are positioned to the right and vertically overlap the **StartNode**. Strictly sort these targets from left-to-right.
+3.  **Iterate and Push:** Sweep through the sorted items:
+    * **IF** a target item's left edge is touching or overlapping the current **Ripple Front**:
+        * Move that item to the right by the **ShiftAmount**.
+        * Update the **Ripple Front** to the item's **new absolute right edge** to continue the push to the next item.
     * **ELSE (No Overlap):**
-        * **STOP** the iteration, as all subsequent sorted nodes are already beyond the ripple path.
+        * **STOP** the sweep immediately.
+4.  **Result:** Return the final absolute X-coordinate of the **Ripple Front**.
 
 ---
 
-### 3. 🖼️ Container Resizing (Local Parent)
+### 3. Conditional Container Growth (PropagateResize)
 
-1.  **Identify X:** **X** is the immediate parent of **S** (must be a **SectionNode**).
-2.  **Resize X:** Increase the width of **X** by the **SPACE\_TO\_CREATE** distance.
-3.  **Trigger Upward Propagation:** Call **PropagateResize** with **X**.
+This process handles cascading container growth, applying the containment check at every level, including the initial local parent.
 
----
+#### 3.1 Local Parent Check (Handled in `executeMovement` function)
 
-### 4. ⬆️ Upward Propagation and Parent Collision Check (Structural Growth Ripple)
+1.  **Run Initial Ripple:** Execute **PropagateShift** on the catalyst **Z** within its immediate parent (**P**). Get the **finalRippleFrontierX**.
+2.  **Get Parent Boundary:** Calculate the **absolute right boundary** of **P** (before any resize).
+3.  **Containment Check:**
+    * **IF** `finalRippleFrontierX` is **less than** the **Parent Boundary**:
+        * The ripple was **contained**. **DO NOT** resize **P**.
+        * Skip Step 3.2 (PropagateResize) entirely.
+    * **ELSE (Ripple Reached Boundary):**
+        * **Resize P:** Increase the width of **P** by **SPACE\_TO\_CREATE**.
+        * **Continue Upward:** Call **PropagateResize** with **P** as the starting node.
 
-The **PropagateResize** function handles cascading container growth up the node tree. 
+#### 3.2 Upward Propagation (PropagateResize)
+
+This process continues recursively up the hierarchy, checking for containment at each parent level.
 
 #### Function: **PropagateResize**(**ResizedNode**, **SpaceCreatedInResize**, **level**)
 
 1.  **Identify X & P:** **X** is the **ResizedNode**. **P** is the parent of **X**.
-2.  **Parent Collision Check:** Apply lateral movement to **siblings** of **X** within **P**'s context. This pushes any sibling that now overlaps **X** due to **X**'s increased width.
-    * Call **PropagateShift**(**X**, **P**, **SpaceCreatedInResize**).
-3.  **Base Case:**
-    * **IF P is the Page or Document node:** Run the final **PropagateShift** on **P**'s children, and **STOP** the recursion.
-4.  **Recursive Step (P is a Section):**
-    * **Resize P:** Increase the width of **P** by **SpaceCreatedInResize**.
-    * **Recursive Call:** Recursively call **PropagateResize** with **P**.
+2.  **Base Case:**
+    * **IF P is the Page or Document node:** Run the final **PropagateShift** on P's children, and **STOP** the recursion.
+3.  **Parent Boundary:** Calculate the **absolute right boundary** of **P**.
+4.  **Lateral Collision Check & Get Ripple Front:** Call **PropagateShift**(**X**, **P**, **SpaceCreatedInResize**) to move siblings of **X** and get the **finalRippleFrontierX**.
+5.  **Containment Decision:**
+    * **IF** `finalRippleFrontierX` is **less than** the **Parent Boundary**:
+        * The ripple was **contained**. **DO NOT** resize **P**.
+        * **STOP** the recursion immediately.
+    * **ELSE (Ripple Reached Boundary):**
+        * **Resize P:** Increase the width of **P** by **SpaceCreatedInResize**.
+        * **Recursive Call:** Recursively call **PropagateResize** with **P**.
 
 ---
 
-### 5. Remove Z
+### 4. Cleanup
 
-1.  **Delete Z:** Delete the temporary node **Z**.
+1.  **Delete Z:** The temporary placeholder item **Z** is deleted.
