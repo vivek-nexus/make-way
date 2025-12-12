@@ -1,17 +1,19 @@
 "use strict";
+const EXTRA_SPACE_WHEN_DUPLICATING = 40;
 figma.on('run', ({ command, parameters }) => {
     if (command) {
         switch (command) {
             case "makeSpaceDuplicateNode":
                 if (validateAndSendState(true)) {
                     const selection = figma.currentPage.selection;
-                    executeMovement(selection[0].width + 80);
+                    executeMovement(selection[0].width + EXTRA_SPACE_WHEN_DUPLICATING, "move_and_duplicate");
+                    duplicateAndOffsetNode(selection[0]);
                 }
                 break;
             case "makeSpacePixels":
                 if (parameters && !isNaN(parameters["pixels"]) && parameters["pixels"] > 0) {
                     if (validateAndSendState(true)) {
-                        executeMovement(Number(parameters["pixels"]));
+                        executeMovement(Number(parameters["pixels"]), "move");
                     }
                 }
                 else {
@@ -34,15 +36,20 @@ figma.on('run', ({ command, parameters }) => {
     }
 });
 function showPluginUI() {
-    figma.showUI(__html__, { width: 400, height: 328, title: "Make way!" });
+    figma.showUI(__html__, { width: 400, height: 365, title: "Make way!" });
     validateAndSendState(false);
     figma.on('selectionchange', () => {
         validateAndSendState(false);
     });
     figma.ui.on('message', (msg) => {
-        if (msg.type === 'move') {
-            const space = parseInt(msg.value, 10);
-            executeMovement(space);
+        if (msg.type === "move_and_duplicate" || msg.type === "move") {
+            const space = msg.value;
+            console.log(msg);
+            executeMovement(space, msg.type);
+            if (msg.type === "move_and_duplicate") {
+                const selection = figma.currentPage.selection;
+                duplicateAndOffsetNode(selection[0]);
+            }
         }
         if (msg.type === 'close') {
             figma.closePlugin();
@@ -53,26 +60,26 @@ function validateAndSendState(headless) {
     const selection = figma.currentPage.selection;
     if (selection.length < 1) {
         headless
-            ? figma.notify("Please select a top level node and rerun", {
+            ? figma.notify("Please select a top level item and rerun", {
                 error: true,
                 timeout: 5000,
                 onDequeue: () => {
                     figma.closePlugin();
                 }
             })
-            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" });
+            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level item" });
         return false;
     }
     if (selection.length > 1) {
         headless
-            ? figma.notify("Please select exactly one top level node and rerun", {
+            ? figma.notify("Please select exactly one top level item and rerun", {
                 error: true,
                 timeout: 5000,
                 onDequeue: () => {
                     figma.closePlugin();
                 }
             })
-            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select exactly one node" });
+            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select exactly one item" });
         return false;
     }
     const S = selection[0];
@@ -80,29 +87,29 @@ function validateAndSendState(headless) {
     if (SParent === figma.currentPage || (SParent === null || SParent === void 0 ? void 0 : SParent.type) === 'SECTION') {
         // Ensure the selected node has a width for default calculation
         const S_WIDTH = 'width' in S ? S.width : 0;
-        const DEFAULT_SPACE = Math.round(S_WIDTH + 80);
+        const DEFAULT_SPACE = Math.round(S_WIDTH + EXTRA_SPACE_WHEN_DUPLICATING);
         !headless && figma.ui.postMessage({
             type: 'selectionState',
             state: 'VALID',
-            message: `${S_WIDTH}px (selected node width) + 80px buffer`,
+            message: `${Math.round(S_WIDTH)}px (selected item width) + 40px buffer`,
             defaultSpace: DEFAULT_SPACE
         });
         return true;
     }
     else {
         headless
-            ? figma.notify("Please select a top level node and rerun", {
+            ? figma.notify("Please select a top level item and rerun", {
                 error: true,
                 timeout: 5000,
                 onDequeue: () => {
                     figma.closePlugin();
                 }
             })
-            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level node" });
+            : figma.ui.postMessage({ type: 'selectionState', state: 'INVALID', message: "Please select a top level item" });
         return false;
     }
 }
-function executeMovement(SPACE_TO_CREATE) {
+function executeMovement(SPACE_TO_CREATE, type) {
     const selection = figma.currentPage.selection;
     if (selection.length !== 1) {
         return;
@@ -136,7 +143,7 @@ function executeMovement(SPACE_TO_CREATE) {
     console.log(`1. Created temp node Z at x: ${Z.x}, width: ${Z.width}`);
     try {
         //  2. Collision and Response Propagation (The Initial Ripple)
-        figma.notify(`Pushing nodes on the right...`, { timeout: 2000 });
+        figma.notify(`Pushing items on the right...`, { timeout: 2000 });
         // The initial call starts the chain from Z.
         const finalRippleFrontierX = PropagateShift(Z, SParent_CONTAINER, SPACE_TO_CREATE);
         //  3. Local Parent Container Resizing
@@ -175,7 +182,7 @@ function executeMovement(SPACE_TO_CREATE) {
         // 4. CLEANUP
         Z.remove();
         console.log("4. Removed temp node Z.");
-        figma.notify(`Space created next to "${S.name}". Now go use that space!`);
+        figma.notify(type === "move_and_duplicate" ? `"${S.name}" duplicated! Chop chop!` : `Space created next to "${S.name}". Now go use that space! `);
         console.log(`--- FINISHED MOVEMENT ---`);
         figma.closePlugin();
     }
@@ -286,4 +293,35 @@ function PropagateResize(ResizedNode, SpaceCreatedInResize, level) {
     console.log(`${logPrefix} Resized parent '${P_SECTION.name}' from ${oldWidth}px to ${P_SECTION.width}px.`);
     // 2C. Recursive Call to propagate up the node tree
     PropagateResize(P_SECTION, SpaceCreatedInResize, level + 1);
+}
+function duplicateAndOffsetNode(originalNode) {
+    // 1. Check for required properties (x, y, width) and a parent.
+    if (!('x' in originalNode) ||
+        !('y' in originalNode) ||
+        !('width' in originalNode) ||
+        !('parent' in originalNode) ||
+        !originalNode.parent) {
+        console.error("Node is missing required spatial properties or parent.", originalNode);
+        return;
+    }
+    try {
+        // 2. Duplicate the original node.
+        const duplicatedNode = originalNode.clone();
+        if (!duplicatedNode) {
+            console.error("Duplication failed for the node.", originalNode);
+            return;
+        }
+        // Explicitly ensure the duplicate is parented to the target parent.
+        originalNode.parent.appendChild(duplicatedNode);
+        // 3. Calculate the new x-position (relative to the targetParent).
+        // New X = Original X (relative to parent) + Original Width + 40px offset
+        const newX = originalNode.x + originalNode.width + EXTRA_SPACE_WHEN_DUPLICATING;
+        // 4. Reposition the duplicated node relative to its new parent.
+        duplicatedNode.x = newX;
+        duplicatedNode.y = originalNode.y;
+        console.log(`Duplicated Node: ${originalNode.name}`);
+    }
+    catch (error) {
+        console.error("An error occurred during duplication or positioning:", error);
+    }
 }
