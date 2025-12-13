@@ -105,9 +105,7 @@
 
     #message {
       font-size: small;
-      min-height: 15px;
-      line-height: 1.2;
-      text-align: left;
+      margin: 0;
     }
 
     .message-valid {
@@ -477,7 +475,7 @@
 
       <div class="button-and-message-row">
         <button id="move-button" disabled>Make way!</button>
-        <div id="message" class="message-valid"></div>
+        <p id="message" class="message-valid"></p>
       </div>
     </form>
     <p class="footer">Another project by <a href="https://vivek-nexus.github.io" target="_blank">Vivek</a></p>
@@ -517,6 +515,7 @@
       spaceInput.disabled = false
       if (selectionValidity === "VALID") {
         spaceInput.focus()
+        messageDiv.textContent = message
       }
     }
   }

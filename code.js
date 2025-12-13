@@ -91,7 +91,7 @@ function validateAndSendState(headless) {
         !headless && figma.ui.postMessage({
             type: 'selectionState',
             state: 'VALID',
-            message: `${Math.round(S_WIDTH)}px (selected item width) + 40px buffer`,
+            message: `${Math.round(S_WIDTH)}px (selected item width) + 40px (for gap)`,
             defaultSpace: DEFAULT_SPACE
         });
         return true;
