@@ -36,7 +36,7 @@ figma.on('run', ({ command, parameters }) => {
     }
 });
 function showPluginUI() {
-    figma.showUI(__html__, { width: 400, height: 365, title: "Make way!" });
+    figma.showUI(__html__, { width: 420, height: 376, title: "Make way!" });
     validateAndSendState(false);
     figma.on('selectionchange', () => {
         validateAndSendState(false);
@@ -91,7 +91,7 @@ function validateAndSendState(headless) {
         !headless && figma.ui.postMessage({
             type: 'selectionState',
             state: 'VALID',
-            message: `${Math.round(S_WIDTH)}px (selected item width) + 40px buffer`,
+            message: `${Math.round(S_WIDTH)}px (selected item width) + 40px (for gap)`,
             defaultSpace: DEFAULT_SPACE
         });
         return true;
