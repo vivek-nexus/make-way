@@ -36,7 +36,7 @@ figma.on('run', ({ command, parameters }) => {
     }
 });
 function showPluginUI() {
-    figma.showUI(__html__, { width: 420, height: 376, title: "Make way!" });
+    figma.showUI(__html__, { width: 420, height: 378, title: "Make way!" });
     validateAndSendState(false);
     figma.on('selectionchange', () => {
         validateAndSendState(false);

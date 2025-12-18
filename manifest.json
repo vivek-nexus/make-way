@@ -17,11 +17,11 @@
   },
   "menu": [
     {
-      "name": "⚡ Duplicate selected node",
+      "name": "⚡ Duplicate selected item",
       "command": "makeSpaceDuplicateNode"
     },
     {
-      "name": "⚡ Custom space next to selected node",
+      "name": "⚡ Custom space next to selected item",
       "command": "makeSpacePixels",
       "parameters": [
         {
