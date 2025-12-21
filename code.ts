@@ -1,21 +1,13 @@
 // Define the types we'll be working with for clarity
 type ValidParentNode = (SectionNode | PageNode | DocumentNode) & ChildrenMixin
-const EXTRA_SPACE_WHEN_DUPLICATING = 40
 
 figma.on('run', ({ command, parameters }: RunEvent) => {
   if (command) {
     switch (command) {
-      case "makeSpaceDuplicateNode":
-        if (validateAndSendState(true)) {
-          const selection = figma.currentPage.selection
-          executeMovement(selection[0].width + EXTRA_SPACE_WHEN_DUPLICATING, "move_and_duplicate")
-          duplicateAndOffsetNode(selection[0])
-        }
-        break
       case "makeSpacePixels":
         if (parameters && !isNaN(parameters["pixels"]) && parameters["pixels"] > 0) {
           if (validateAndSendState(true)) {
-            executeMovement(Number(parameters["pixels"]), "move")
+            executeMovement(Number(parameters["pixels"]))
           }
         }
         else {
@@ -38,21 +30,29 @@ figma.on('run', ({ command, parameters }: RunEvent) => {
   }
 })
 
+figma.parameters.on("input", ({ parameters, key, query, result }: ParameterInputEvent) => {
+  switch (key) {
+    case "pixels":
+      setSuggestion(result)
+      figma.on('selectionchange', () => {
+        setSuggestion(result)
+      })
+      break
+    default:
+      break
+  }
+})
+
 function showPluginUI() {
-  figma.showUI(__html__, { width: 420, height: 378, title: "Make way!" })
+  figma.showUI(__html__, { width: 400, height: 328, title: "Make way!" })
   validateAndSendState(false)
   figma.on('selectionchange', () => {
     validateAndSendState(false)
   })
   figma.ui.on('message', (msg) => {
-    if (msg.type === "move_and_duplicate" || msg.type === "move") {
-      const space = msg.value
-      console.log(msg)
-      executeMovement(space, msg.type)
-      if (msg.type === "move_and_duplicate") {
-        const selection = figma.currentPage.selection
-        duplicateAndOffsetNode(selection[0])
-      }
+    if (msg.type === 'move') {
+      const space = parseInt(msg.value, 10)
+      executeMovement(space)
     }
     if (msg.type === 'close') {
       figma.closePlugin()
@@ -96,12 +96,12 @@ function validateAndSendState(headless: boolean): boolean {
   if (SParent === figma.currentPage || SParent?.type === 'SECTION') {
     // Ensure the selected node has a width for default calculation
     const S_WIDTH = 'width' in S ? S.width : 0
-    const DEFAULT_SPACE = Math.round(S_WIDTH + EXTRA_SPACE_WHEN_DUPLICATING)
+    const DEFAULT_SPACE = Math.round(S_WIDTH + 40)
 
     !headless && figma.ui.postMessage({
       type: 'selectionState',
       state: 'VALID',
-      message: `${Math.round(S_WIDTH)}px (selected item width) + 40px (for gap)`,
+      message: `${S_WIDTH}px (selected item width) + 40px gap`,
       defaultSpace: DEFAULT_SPACE
     })
     return true
@@ -119,8 +119,39 @@ function validateAndSendState(headless: boolean): boolean {
   }
 }
 
+function setSuggestion(result: SuggestionResults): boolean | number {
+  const selection = figma.currentPage.selection
 
-function executeMovement(SPACE_TO_CREATE: number, type: "move_and_duplicate" | "move"): void {
+  if (selection.length !== 1) {
+    return false
+  }
+
+  const S = selection[0]
+  const SParent = S.parent
+
+  if (SParent === figma.currentPage || SParent?.type === 'SECTION') {
+    // Ensure the selected node has a width for default calculation
+    const S_WIDTH = 'width' in S ? S.width : 0
+    const suggestion = Math.round(S_WIDTH)
+
+    try {
+      result.setSuggestions(
+        [
+          { name: `${suggestion + 40}px (${suggestion}px + 40px gap)`, data: `${suggestion + 40}` },
+          { name: `${suggestion + 80}px (${suggestion}px + 80px gap)`, data: `${suggestion + 80}` }
+        ]
+      )
+    }
+    catch (error) {
+      console.error(`Ignoring selection change since updating suggestions is not allowed ${error}`)
+    }
+    return true
+  } else {
+    return false
+  }
+}
+
+function executeMovement(SPACE_TO_CREATE: number): void {
   const selection = figma.currentPage.selection
   if (selection.length !== 1) {
     return
@@ -205,7 +236,7 @@ function executeMovement(SPACE_TO_CREATE: number, type: "move_and_duplicate" | "
     // 4. CLEANUP
     Z.remove()
     console.log("4. Removed temp node Z.")
-    figma.notify(type === "move_and_duplicate" ? `"${S.name}" duplicated! Chop chop!` : `Space created next to "${S.name}". Now go use that space! `)
+    figma.notify(`Space created next to "${S.name}". Now go use that space!`)
     console.log(`--- FINISHED MOVEMENT ---`)
     figma.closePlugin()
   }
@@ -339,46 +370,6 @@ function PropagateResize(ResizedNode: SectionNode, SpaceCreatedInResize: number,
 
   // 2C. Recursive Call to propagate up the node tree
   PropagateResize(P_SECTION, SpaceCreatedInResize, level + 1)
-}
-
-function duplicateAndOffsetNode(originalNode: SceneNode) {
-  // 1. Check for required properties (x, y, width) and a parent.
-  if (
-    !('x' in originalNode) ||
-    !('y' in originalNode) ||
-    !('width' in originalNode) ||
-    !('parent' in originalNode) ||
-    !originalNode.parent
-  ) {
-    console.error("Node is missing required spatial properties or parent.", originalNode)
-    return
-  }
-
-  try {
-    // 2. Duplicate the original node.
-    const duplicatedNode = originalNode.clone()
-
-    if (!duplicatedNode) {
-      console.error("Duplication failed for the node.", originalNode)
-      return
-    }
-
-    // Explicitly ensure the duplicate is parented to the target parent.
-    originalNode.parent.appendChild(duplicatedNode)
-
-    // 3. Calculate the new x-position (relative to the targetParent).
-    // New X = Original X (relative to parent) + Original Width + 40px offset
-    const newX = originalNode.x + originalNode.width + EXTRA_SPACE_WHEN_DUPLICATING
-
-    // 4. Reposition the duplicated node relative to its new parent.
-    duplicatedNode.x = newX
-    duplicatedNode.y = originalNode.y
-
-    console.log(`Duplicated Node: ${originalNode.name}`)
-
-  } catch (error) {
-    console.error("An error occurred during duplication or positioning:", error)
-  }
 }
 
 
