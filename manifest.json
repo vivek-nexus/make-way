@@ -15,21 +15,12 @@
       "none"
     ]
   },
-  "menu": [
+  "parameters": [
     {
-      "name": "👋 Launch plugin UI",
-      "command": "launchPluginUI"
-    },
-    {
-      "name": "⚡ Space next to selected item",
-      "command": "makeSpacePixels",
-      "parameters": [
-        {
-          "key": "pixels",
-          "name": "Space required in pixels",
-          "allowFreeform": true
-        }
-      ]
+      "key": "space-in-pixels",
+      "name": "Space required in pixels",
+      "allowFreeform": true
     }
-  ]
+  ],
+  "parameterOnly": false
 }

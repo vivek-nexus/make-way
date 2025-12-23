@@ -7,7 +7,7 @@
 
     body {
       margin: 0;
-      overflow: hidden;
+      overflow-y: hidden;
     }
 
     .container {
@@ -15,8 +15,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      padding: 16px;
-      padding-top: 1.5rem;
+      padding: 1.25rem 1rem;
       position: relative;
       z-index: 20;
       background-color: white;
@@ -24,23 +23,29 @@
       border-radius: 0.75rem 0.75rem 0px 0px;
     }
 
+    form {
+      margin: 0;
+    }
+
     label {
       font-size: small;
       color: #535353;
-      font-weight: 500;
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+
+    p {
+      font-size: small;
+      color: #535353;
+      margin: 0;
     }
 
     input[type="number"] {
       padding: 8px 10px;
       border: 1px solid #E6E6E6;
-      border-radius: 4px;
+      border-radius: 4px 0 0 4px;
       flex-grow: 1;
       box-sizing: border-box;
-    }
-
-    input[type="number"]:focus {
-      outline: none;
-      border-color: #18A0FB;
     }
 
     button {
@@ -48,7 +53,7 @@
       background-color: #18A0FB;
       color: white;
       border: none;
-      border-radius: 4px;
+      border-radius: 0 4px 4px 0;
       font-weight: 600;
       cursor: pointer;
       transition: background-color 0.1s;
@@ -65,12 +70,12 @@
 
     .input-and-button {
       display: flex;
-      gap: 0.25rem;
     }
 
     #message {
       font-size: small;
       min-height: 15px;
+      margin: 1rem 0rem 0.5rem 0rem;
     }
 
     /* Disabled style */
@@ -415,16 +420,18 @@
 
 
 
+  <div class="container">
+    <form>
+      <label for="space-input">Create space on the right (px)</label>
+      <div class="input-and-button">
+        <input type="number" id="space-input" value="400" min="1" placeholder="e.g. 400">
+        <button id="move-button" disabled>Make way!</button>
+      </div>
+      <p id="message" class="message-valid"></p>
+    </form>
 
-  <form class="container">
-    <label for="space-input">Create space on the right (px)</label>
-    <div class="input-and-button">
-      <input type="number" id="space-input" value="400" min="1" placeholder="e.g. 400">
-      <button id="move-button" disabled>Make way!</button>
-    </div>
-    <div id="message" class="message-valid"></div>
-
-  </form>
+    <p>Another project by <a href="https://vivek-nexus.github.io" target="_blank">Vivek</a></p>
+  </div>
 </div>
 
 <script>

@@ -1,26 +1,19 @@
 "use strict";
 figma.on('run', ({ command, parameters }) => {
-    if (command) {
-        switch (command) {
-            case "makeSpacePixels":
-                if (parameters && !isNaN(parameters["pixels"]) && parameters["pixels"] > 0) {
-                    if (validateAndSendState(true)) {
-                        executeMovement(Number(parameters["pixels"]));
-                    }
+    if (parameters) {
+        if (!isNaN(parameters["space-in-pixels"]) && parameters["space-in-pixels"] > 0) {
+            if (validateAndSendState(true)) {
+                executeMovement(Number(parameters["space-in-pixels"]));
+            }
+        }
+        else {
+            figma.notify("Please enter a valid number in pixels and rerun", {
+                error: true,
+                timeout: 5000,
+                onDequeue: () => {
+                    figma.closePlugin();
                 }
-                else {
-                    figma.notify("Please enter a valid number in pixels and rerun", {
-                        error: true,
-                        timeout: 5000,
-                        onDequeue: () => {
-                            figma.closePlugin();
-                        }
-                    });
-                }
-                break;
-            default:
-                showPluginUI();
-                break;
+            });
         }
     }
     else {
@@ -29,7 +22,7 @@ figma.on('run', ({ command, parameters }) => {
 });
 figma.parameters.on("input", ({ parameters, key, query, result }) => {
     switch (key) {
-        case "pixels":
+        case "space-in-pixels":
             setSuggestion(result);
             figma.on('selectionchange', () => {
                 setSuggestion(result);
@@ -40,7 +33,7 @@ figma.parameters.on("input", ({ parameters, key, query, result }) => {
     }
 });
 function showPluginUI() {
-    figma.showUI(__html__, { width: 400, height: 328, title: "Make way!" });
+    figma.showUI(__html__, { width: 400, height: 362, title: "Make way!" });
     validateAndSendState(false);
     figma.on('selectionchange', () => {
         validateAndSendState(false);
@@ -85,12 +78,13 @@ function validateAndSendState(headless) {
     const SParent = S.parent;
     if (SParent === figma.currentPage || (SParent === null || SParent === void 0 ? void 0 : SParent.type) === 'SECTION') {
         // Ensure the selected node has a width for default calculation
-        const S_WIDTH = 'width' in S ? S.width : 0;
-        const DEFAULT_SPACE = Math.round(S_WIDTH + 40);
+        const S_WIDTH = 'width' in S ? Math.round(S.width) : 0;
+        const gap = getGap(S);
+        const DEFAULT_SPACE = Math.round(S_WIDTH + (gap > 0 ? gap : 40));
         !headless && figma.ui.postMessage({
             type: 'selectionState',
             state: 'VALID',
-            message: `${S_WIDTH}px (selected item width) + 40px gap`,
+            message: `${S_WIDTH}px (selected item width) + ${gap}px for gap`,
             defaultSpace: DEFAULT_SPACE
         });
         return true;
@@ -117,12 +111,11 @@ function setSuggestion(result) {
     const SParent = S.parent;
     if (SParent === figma.currentPage || (SParent === null || SParent === void 0 ? void 0 : SParent.type) === 'SECTION') {
         // Ensure the selected node has a width for default calculation
-        const S_WIDTH = 'width' in S ? S.width : 0;
-        const suggestion = Math.round(S_WIDTH);
+        const S_WIDTH = 'width' in S ? Math.round(S.width) : 0;
+        const gap = getGap(S);
         try {
             result.setSuggestions([
-                { name: `${suggestion + 40}px (${suggestion}px + 40px gap)`, data: `${suggestion + 40}` },
-                { name: `${suggestion + 80}px (${suggestion}px + 80px gap)`, data: `${suggestion + 80}` }
+                { name: `${S_WIDTH + gap}px (${S_WIDTH}px + ${gap}px for gap)`, data: `${S_WIDTH + gap}` },
             ]);
         }
         catch (error) {
@@ -132,6 +125,27 @@ function setSuggestion(result) {
     }
     else {
         return false;
+    }
+}
+function getGap(S) {
+    const SParent = S.parent;
+    if (SParent) {
+        const relevantSiblings = SParent.children.filter(N => {
+            const verticalOverlap = (N.y < S.y + S.height) &&
+                (N.y + N.height > S.y);
+            const startsToTheRight = N.x >= S.x;
+            return verticalOverlap && startsToTheRight;
+        });
+        if (relevantSiblings.length <= 1) {
+            return 40;
+        }
+        relevantSiblings.sort((a, b) => {
+            return a.x - b.x;
+        });
+        return (Math.round((relevantSiblings[1].x) - (S.x + S.width)));
+    }
+    else {
+        return 40;
     }
 }
 function executeMovement(SPACE_TO_CREATE) {
