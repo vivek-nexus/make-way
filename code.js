@@ -84,7 +84,7 @@ function validateAndSendState(headless) {
         !headless && figma.ui.postMessage({
             type: 'selectionState',
             state: 'VALID',
-            message: `${S_WIDTH}px (selected item width) + ${gap}px for gap`,
+            message: `${S_WIDTH}px (selected item width) + ${gap > 0 ? gap : 40}px for gap`,
             defaultSpace: DEFAULT_SPACE
         });
         return true;
@@ -128,21 +128,40 @@ function setSuggestion(result) {
     }
 }
 function getGap(S) {
-    const SParent = S.parent;
-    if (SParent) {
-        const relevantSiblings = SParent.children.filter(N => {
-            const verticalOverlap = (N.y < S.y + S.height) &&
-                (N.y + N.height > S.y);
-            const startsToTheRight = N.x >= S.x;
+    const Parent = S.parent;
+    const SAbsBox = getAbsoluteBoundingBox(S);
+    if (Parent && SAbsBox) {
+        // Identify and sort relevant siblings(Vertically overlapping and to the right)
+        const relevantSiblings = Parent.children.filter(N => {
+            if (!('x' in N) || N === S || N.locked) {
+                return false;
+            }
+            const siblingAbsBox = getAbsoluteBoundingBox(N);
+            if (!siblingAbsBox) {
+                return false;
+            }
+            const verticalOverlap = (siblingAbsBox.y < SAbsBox.y + SAbsBox.height) &&
+                (siblingAbsBox.y + siblingAbsBox.height > SAbsBox.y);
+            const startsToTheRight = siblingAbsBox.x >= SAbsBox.x;
             return verticalOverlap && startsToTheRight;
         });
-        if (relevantSiblings.length <= 1) {
+        if (relevantSiblings && (relevantSiblings.length >= 1)) {
+            relevantSiblings.sort((a, b) => {
+                const absA = getAbsoluteBoundingBox(a);
+                const absB = getAbsoluteBoundingBox(b);
+                return (absA ? absA.x : 0) - (absB ? absB.x : 0);
+            });
+            const nearestSiblingAbsBox = getAbsoluteBoundingBox(relevantSiblings[0]);
+            if (nearestSiblingAbsBox) {
+                return (Math.round((nearestSiblingAbsBox.x) - (SAbsBox.x + SAbsBox.width)));
+            }
+            else {
+                return 40;
+            }
+        }
+        else {
             return 40;
         }
-        relevantSiblings.sort((a, b) => {
-            return a.x - b.x;
-        });
-        return (Math.round((relevantSiblings[1].x) - (S.x + S.width)));
     }
     else {
         return 40;
