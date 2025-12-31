@@ -131,7 +131,7 @@ function setSuggestion(result: SuggestionResults): boolean | number {
     try {
       result.setSuggestions(
         [
-          { name: `${S_WIDTH + gap}px (${S_WIDTH}px + ${gap}px for gap)`, data: `${S_WIDTH + gap}` },
+          { name: `${S_WIDTH + gap}px (${S_WIDTH}px + ${gap > 0 ? gap : 40}px for gap)`, data: `${S_WIDTH + (gap > 0 ? gap : 40)}` },
         ]
       )
     }
@@ -161,7 +161,7 @@ function getGap(S: SceneNode) {
       }
       const verticalOverlap = (siblingAbsBox.y < SAbsBox.y + SAbsBox.height) &&
         (siblingAbsBox.y + siblingAbsBox.height > SAbsBox.y)
-      const startsToTheRight = siblingAbsBox.x >= SAbsBox.x
+      const startsToTheRight = siblingAbsBox.x > SAbsBox.x
       return verticalOverlap && startsToTheRight
     })
 
@@ -320,7 +320,7 @@ function PropagateShift(StartNode: SceneNode, Parent: ValidParentNode, ShiftAmou
       }
       const verticalOverlap = (siblingAbsBox.y < startAbsBox.y + startAbsBox.height) &&
         (siblingAbsBox.y + siblingAbsBox.height > startAbsBox.y)
-      const startsToTheRight = siblingAbsBox.x >= startAbsBox.x
+      const startsToTheRight = siblingAbsBox.x > startAbsBox.x
       return verticalOverlap && startsToTheRight
     })
 

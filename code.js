@@ -115,7 +115,7 @@ function setSuggestion(result) {
         const gap = getGap(S);
         try {
             result.setSuggestions([
-                { name: `${S_WIDTH + gap}px (${S_WIDTH}px + ${gap}px for gap)`, data: `${S_WIDTH + gap}` },
+                { name: `${S_WIDTH + gap}px (${S_WIDTH}px + ${gap > 0 ? gap : 40}px for gap)`, data: `${S_WIDTH + (gap > 0 ? gap : 40)}` },
             ]);
         }
         catch (error) {
@@ -142,7 +142,7 @@ function getGap(S) {
             }
             const verticalOverlap = (siblingAbsBox.y < SAbsBox.y + SAbsBox.height) &&
                 (siblingAbsBox.y + siblingAbsBox.height > SAbsBox.y);
-            const startsToTheRight = siblingAbsBox.x >= SAbsBox.x;
+            const startsToTheRight = siblingAbsBox.x > SAbsBox.x;
             return verticalOverlap && startsToTheRight;
         });
         if (relevantSiblings && (relevantSiblings.length >= 1)) {
@@ -278,7 +278,7 @@ function PropagateShift(StartNode, Parent, ShiftAmount) {
         }
         const verticalOverlap = (siblingAbsBox.y < startAbsBox.y + startAbsBox.height) &&
             (siblingAbsBox.y + siblingAbsBox.height > startAbsBox.y);
-        const startsToTheRight = siblingAbsBox.x >= startAbsBox.x;
+        const startsToTheRight = siblingAbsBox.x > startAbsBox.x;
         return verticalOverlap && startsToTheRight;
     });
     relevantSiblings.sort((a, b) => {
